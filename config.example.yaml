@@ -56,6 +56,10 @@ alerts:
       condition: "packet_loss == 100"
       severity: "critical"
       cooldown: 300
+      # trigger_after: only alert after the condition holds for N consecutive
+      # ping cycles (default 1). Suppresses paging on a brief, self-healing blip.
+      # Alias: "occurrences". Example — require 3 consecutive fully-lost cycles:
+      # trigger_after: 3
       # targets: apply to all targets (default — omit field or leave empty)
     - name: "High Packet Loss"
       condition: "packet_loss > 20"

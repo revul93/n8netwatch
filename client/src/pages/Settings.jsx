@@ -479,8 +479,8 @@ function AlertRulesSection({ config, token, onConfigRefresh }) {
           const hasTargetFilter = scope !== 'all';
           return (
             <div key={i} className="p-3 bg-gray-800/40 border border-gray-700/60 rounded-lg flex flex-col gap-3">
-              {/* Row 1: Name + Severity + Cooldown + Delete */}
-              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
+              {/* Row 1: Name + Severity + Cooldown + Trigger After + Delete */}
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-end">
                 <Field label="Rule Name" value={r.name} onChange={v => update(i, 'name', v)} placeholder="Host Down" required />
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-400">Severity</label>
@@ -501,6 +501,22 @@ function AlertRulesSection({ config, token, onConfigRefresh }) {
                     value={r.cooldown ?? 300}
                     onChange={e => update(i, 'cooldown', parseInt(e.target.value, 10) || 300)}
                     className={cn(inputCls, 'w-24')}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label
+                    className="text-xs text-gray-400"
+                    title="Number of consecutive ping cycles the condition must hold before the alert fires (default 1)"
+                  >
+                    Trigger after
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={r.trigger_after ?? 1}
+                    onChange={e => update(i, 'trigger_after', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className={cn(inputCls, 'w-24')}
+                    title="Consecutive triggering cycles required before alerting. 1 = alert immediately."
                   />
                 </div>
                 <button

@@ -11,11 +11,31 @@ let _rules       = [];
 // cooldownMap: "targetId-ruleName" -> timestamp of last alert sent
 const cooldownMap = new Map();
 
+// streakMap: "targetId-ruleName" -> number of consecutive ping cycles the rule's
+// condition has evaluated true. Drives the `trigger_after` behaviour so a rule
+// only fires once its condition has held for N cycles in a row (default 1).
+const streakMap = new Map();
+
 // Severity ordering — higher number = higher priority
 const SEVERITY_ORDER = { critical: 3, warning: 2, info: 1, low: 0 };
 
 function getSeverityLevel(severity) {
   return SEVERITY_ORDER[String(severity).toLowerCase()] ?? 0;
+}
+
+/**
+ * getTriggerAfter - how many consecutive triggering ping cycles are required
+ * before a rule fires. Configured per-rule via `trigger_after` (preferred) or
+ * its alias `occurrences`. Defaults to 1 (fire on the first triggering cycle),
+ * which preserves the original behaviour. Invalid values fall back to 1.
+ *
+ * @param {object} rule
+ * @returns {number} integer >= 1
+ */
+function getTriggerAfter(rule) {
+  const raw = rule.trigger_after ?? rule.occurrences ?? 1;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 function initAlertEngine(db, wss, emailService, config) {
@@ -67,8 +87,23 @@ async function processAlerts(target, pingResult) {
         if (!targetMatch) continue;
       }
     }
-    if (evaluateCondition(rule.condition, metrics)) {
-      triggeredRules.push(rule);
+
+    // Track how many consecutive cycles this rule's condition has held for this
+    // target. The rule only counts as "triggered" once that streak reaches its
+    // `trigger_after` threshold — a single transient loss no longer alerts.
+    const streakKey    = `${target.id}-${rule.name}`;
+    const conditionMet = evaluateCondition(rule.condition, metrics);
+
+    if (conditionMet) {
+      const streak = (streakMap.get(streakKey) || 0) + 1;
+      streakMap.set(streakKey, streak);
+      if (streak >= getTriggerAfter(rule)) {
+        triggeredRules.push(rule);
+      }
+    } else {
+      // Condition cleared — reset the consecutive counter so the next episode
+      // starts fresh (the threshold counts consecutive cycles, not lifetime).
+      streakMap.delete(streakKey);
     }
   }
 

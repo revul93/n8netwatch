@@ -340,6 +340,7 @@ alerts:
       condition: "packet_loss == 100"
       severity: "critical"    # critical | warning
       cooldown: 300           # Minimum seconds between repeated alerts for the same target
+      trigger_after: 3        # Only alert after the condition holds for 3 consecutive cycles (default 1)
       # targets: []           # Omit or leave empty to apply to all targets
 
     - name: "High Packet Loss"
@@ -387,6 +388,36 @@ condition: "avg_latency > 200"    # Average latency exceeds 200 ms
 condition: "jitter > 50"          # Jitter exceeds 50 ms
 condition: "is_alive == 0"        # Host not responding
 ```
+
+---
+
+### Alert Trigger Threshold (`trigger_after`)
+
+By default a rule fires the moment its condition is true for a single ping
+cycle. To avoid paging on a brief, self-healing blip, set `trigger_after` on a
+rule: the condition must hold for that many **consecutive** ping cycles before
+the alert fires. This is configurable per rule from the **Settings → Alert
+Rules** dashboard (the "Trigger after" field) or directly in `config.yaml`.
+
+```yaml
+rules:
+  - name: "Host Down"
+    condition: "packet_loss == 100"
+    severity: "critical"
+    cooldown: 1800
+    trigger_after: 3      # Alert only after 3 consecutive fully-lost cycles
+```
+
+- **Unit:** consecutive ping cycles (each cycle sends `general.ping_count`
+  pings), not individual packets. With `ping_interval: 8`, `trigger_after: 3`
+  means roughly 24 seconds of continuous failure before alerting.
+- **Reset:** any cycle where the condition is *false* resets the counter, so
+  the threshold always counts an unbroken run.
+- **Default:** `1` — omit the field for the original "alert immediately"
+  behaviour. `occurrences` is accepted as an alias for `trigger_after`.
+- **Interaction with `cooldown`:** `trigger_after` gates the *first* alert of an
+  episode; `cooldown` still governs how often repeat alerts may be sent
+  afterwards.
 
 ---
 

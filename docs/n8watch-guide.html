@@ -491,6 +491,7 @@ cp config.example.yaml config.yaml
       condition: "packet_loss == 100"
       severity: "critical"    # critical | warning
       cooldown: 300           # Min seconds between repeated alerts for the same target
+      trigger_after: 3        # Alert only after 3 consecutive triggering cycles (default 1)
       # targets:              # Omit or leave empty to apply rule to ALL targets
 
     - name: "High Packet Loss"
@@ -529,6 +530,29 @@ condition: "packet_loss > 20"     # More than 20% packet loss
 condition: "avg_latency > 200"    # Latency exceeds 200 ms
 condition: "jitter > 50"          # Jitter exceeds 50 ms
 condition: "is_alive == 0"        # Host not responding</code></pre>
+
+  <h3>Alert Trigger Threshold (<code>trigger_after</code>)</h3>
+  <p>By default a rule fires as soon as its condition is true for a single ping
+  cycle. Set <code>trigger_after: N</code> on a rule to require the condition to
+  hold for <strong>N consecutive</strong> ping cycles before the alert fires —
+  this suppresses paging on a brief, self-healing blip. It is editable per rule
+  from <strong>Settings &rarr; Alert Rules</strong> (the "Trigger after" field)
+  or directly in <code>config.yaml</code>.</p>
+  <ul>
+    <li><strong>Unit:</strong> consecutive ping cycles (each cycle sends
+      <code>general.ping_count</code> pings), not individual packets. With
+      <code>ping_interval: 8</code>, <code>trigger_after: 3</code> is roughly 24
+      seconds of continuous failure before alerting.</li>
+    <li><strong>Reset:</strong> any cycle where the condition is false resets the
+      counter, so the threshold always counts an unbroken run.</li>
+    <li><strong>Default:</strong> <code>1</code> — omit the field for the original
+      "alert immediately" behaviour. <code>occurrences</code> is accepted as an
+      alias for <code>trigger_after</code>.</li>
+    <li><strong>Interaction with <code>cooldown</code>:</strong>
+      <code>trigger_after</code> gates the first alert of an episode;
+      <code>cooldown</code> still governs how often repeat alerts are sent after
+      that.</li>
+  </ul>
 
   <h2>3.7 Internet Speed Tests</h2>
   <pre><code>speedtest:

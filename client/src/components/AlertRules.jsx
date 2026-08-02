@@ -112,6 +112,7 @@ export default function AlertRules() {
                     <div className="flex flex-wrap gap-4 text-xs text-gray-400">
                       <span>Condition: <code className="text-blue-300 bg-gray-800 px-1 py-0.5 rounded">{rule.condition}</code></span>
                       <span>Cooldown: <span className="text-gray-200">{rule.cooldown ?? 300}s</span></span>
+                      <span>Trigger after: <span className="text-gray-200">{rule.trigger_after ?? 1} cycle(s)</span></span>
                       <span>Severity: <span className="text-gray-200">{rule.severity}</span></span>
                     </div>
 
