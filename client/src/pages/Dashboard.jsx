@@ -9,8 +9,9 @@ import SpeedChart from '../components/SpeedChart';
 import HostGrid from '../components/HostGrid';
 import HostPill from '../components/HostPill';
 import FullscreenChartModal from '../components/FullscreenChartModal';
-import GroupedView from '../components/GroupedView';
-import { RefreshCw, Maximize2, Plus, X, FileText, FileDown, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
+import GroupPanel from '../components/GroupPanel';
+import DashboardGrid from '../components/DashboardGrid';
+import { RefreshCw, Maximize2, Plus, X, FileText, FileDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const SECTION_KEYS = ['summary', 'chart', 'speedtest', 'groups', 'hosts'];
@@ -451,137 +452,123 @@ export default function Dashboard() {
     setDragOverSection(null);
   }, []);
 
-  const sectionContent = {
-    summary: (
-      <SummaryCards targets={targetList} lastPingResults={lastPingResults} />
-    ),
-    chart: (
-      <div
-        ref={chartSectionRef}
-        className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col gap-3 min-w-0 relative"
-        style={chartWidthPct < 100 ? { width: `${chartWidthPct}%` } : undefined}
-      >
-        {/* Right-side horizontal resize handle */}
-        <div
-          className="absolute inset-y-2 right-0 w-2 cursor-col-resize group/colresize flex items-center justify-center z-10"
-          onMouseDown={handleChartWidthResizeMouseDown}
-          onKeyDown={handleChartWidthKeyDown}
-          tabIndex={0}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Drag or use arrow keys to resize chart width"
-          title="Drag or use arrow keys to resize chart width"
-        >
-          <div className="h-8 w-1 rounded-full bg-gray-800 group-hover/colresize:bg-blue-600 transition-colors" />
-        </div>
+  // ── Build the arrangeable widget list ──────────────────────────────────────
+  // Group targets by `group` (Ungrouped last) so each group is its own widget.
+  const groupEntries = (() => {
+    const map = new Map();
+    targetList.forEach((t) => {
+      const key = t.group || 'Ungrouped';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(t);
+    });
+    const named = [];
+    let ungrouped = null;
+    for (const [name, gts] of map) {
+      if (name === 'Ungrouped') ungrouped = [name, gts];
+      else named.push([name, gts]);
+    }
+    if (ungrouped) named.push(ungrouped);
+    return named;
+  })();
 
-        {/* Chart with legend + controls inside */}
-        <div className="relative">
-          <UnifiedChart targets={chartTargets} lastPingResults={lastPingResults} colorMap={colorMap} onColorChange={handleColorChange} chartHeight={chartHeight} />
-          {/* Vertical resize handle */}
-          <div
-            className="w-full h-2 flex items-center justify-center cursor-row-resize group mt-1"
-            onMouseDown={handleChartResizeMouseDown}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowUp') { setChartHeight(h => { const v = Math.max(CHART_HEIGHT_MIN, h - 20); chartHeightRef.current = v; localStorage.setItem('dashChartHeight', v); return v; }); }
-              if (e.key === 'ArrowDown') { setChartHeight(h => { const v = Math.min(CHART_HEIGHT_MAX, h + 20); chartHeightRef.current = v; localStorage.setItem('dashChartHeight', v); return v; }); }
-            }}
-            tabIndex={0}
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Drag or use arrow keys to resize chart height"
-            title="Drag or use arrow keys to resize chart"
-          >
-            <div className="h-1 w-16 rounded-full bg-gray-800 group-hover:bg-blue-600 transition-colors" />
+  const widgets = [];
+  if (visibility.summary !== false) {
+    widgets.push({
+      id: 'summary', title: 'Summary', w: 12, h: 4, minW: 4, minH: 3,
+      render: () => <SummaryCards targets={targetList} lastPingResults={lastPingResults} />,
+    });
+  }
+  if (visibility.chart !== false) {
+    widgets.push({
+      id: 'chart', title: 'Overview Chart', w: 8, h: 19, minW: 4, minH: 8,
+      render: () => (
+        <div className="flex flex-col gap-3 h-full min-h-0">
+          <div className="flex-1 min-h-0">
+            <UnifiedChart
+              targets={chartTargets}
+              lastPingResults={lastPingResults}
+              colorMap={colorMap}
+              onColorChange={handleColorChange}
+              fillHeight
+              bare
+            />
+          </div>
+          <div className="border-t border-gray-800 pt-2 flex-shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-500">
+                {selectedTargetIds.length > 0
+                  ? `${selectedTargetIds.length} selected — filtering chart`
+                  : 'Click a target to filter the chart'}
+              </span>
+              {selectedTargetIds.length > 0 && (
+                <button
+                  onClick={() => setSelectedTargetIds([])}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Clear selection
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-28 overflow-auto">
+              {targetList.map((target) => (
+                <HostPill
+                  key={target.id}
+                  target={target}
+                  lastPingResult={lastPingResults[target.id]}
+                  isSelected={selectedTargetIds.includes(target.id)}
+                  onTargetClick={handleTargetClick}
+                />
+              ))}
+            </div>
           </div>
         </div>
-
-        {/* Target selection pills */}
-        <div className="border-t border-gray-800 pt-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500">
-              {selectedTargetIds.length > 0
-                ? `${selectedTargetIds.length} selected — filtering chart`
-                : 'Click a target to filter the chart'}
-            </span>
-            {selectedTargetIds.length > 0 && (
-              <button
-                onClick={() => setSelectedTargetIds([])}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                Clear selection
-              </button>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {targetList.map(target => (
-              <HostPill
-                key={target.id}
-                target={target}
-                lastPingResult={lastPingResults[target.id]}
-                isSelected={selectedTargetIds.includes(target.id)}
-                onTargetClick={handleTargetClick}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    ),
-    speedtest: (
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col gap-2">
+      ),
+    });
+  }
+  if (visibility.speedtest !== false) {
+    widgets.push({
+      id: 'speedtest', title: 'Internet Speed', w: 4, h: 13, minW: 3, minH: 6,
+      render: ({ height }) => (
         <SpeedChart
           results={speedtestResults}
           show={speedtestConfig.show || 'both'}
-          height={speedtestHeight}
+          height={Math.max(140, Math.round((height || 300) - 64))}
           running={speedtestRunning}
         />
-        {/* Vertical resize handle */}
-        <div
-          className="w-full h-2 flex items-center justify-center cursor-row-resize group mt-1"
-          onMouseDown={handleSpeedtestResizeMouseDown}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowUp') { setSpeedtestHeight(h => { const v = Math.max(SPEEDTEST_HEIGHT_MIN, h - 20); speedtestHeightRef.current = v; localStorage.setItem('dashSpeedtestHeight', v); return v; }); }
-            if (e.key === 'ArrowDown') { setSpeedtestHeight(h => { const v = Math.min(SPEEDTEST_HEIGHT_MAX, h + 20); speedtestHeightRef.current = v; localStorage.setItem('dashSpeedtestHeight', v); return v; }); }
-          }}
-          tabIndex={0}
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Drag or use arrow keys to resize speedtest chart height"
-          title="Drag or use arrow keys to resize speedtest chart"
-        >
-          <div className="h-1 w-16 rounded-full bg-gray-800 group-hover:bg-blue-600 transition-colors" />
-        </div>
-      </div>
-    ),
-    hosts: (
-      <HostGrid
-        targets={targetList}
-        lastPingResults={lastPingResults}
-        sparklineData={sparklineData}
-        selectedTargetIds={selectedTargetIds}
-        onTargetClick={handleTargetClick}
-        onDeleteUserTarget={handleDeleteRequest}
-      />
-    ),
-    groups: (
-      <div>
-        <button
-          onClick={toggleGroupsPanel}
-          className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-400 uppercase tracking-wider hover:text-white transition-colors"
-        >
-          {groupsPanelOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          Groups
-        </button>
-        {groupsPanelOpen && targetList.length > 0 && (
-          <GroupedView
-            targets={targetList}
+      ),
+    });
+  }
+  if (visibility.groups !== false) {
+    groupEntries.forEach(([name, gts]) => {
+      widgets.push({
+        id: `group:${name}`, title: name, w: 3, h: 17, minW: 2, minH: 6,
+        render: ({ height }) => (
+          <GroupPanel
+            groupName={name}
+            targets={gts}
             lastPingResults={lastPingResults}
             colorMap={colorMap}
+            fillHeight={height || 220}
           />
-        )}
-      </div>
-    ),
-  };
+        ),
+      });
+    });
+  }
+  if (visibility.hosts !== false) {
+    widgets.push({
+      id: 'hosts', title: 'Hosts', w: 12, h: 24, minW: 4, minH: 6,
+      render: () => (
+        <HostGrid
+          targets={targetList}
+          lastPingResults={lastPingResults}
+          sparklineData={sparklineData}
+          selectedTargetIds={selectedTargetIds}
+          onTargetClick={handleTargetClick}
+          onDeleteUserTarget={handleDeleteRequest}
+        />
+      ),
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -707,30 +694,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Draggable sections */}
-      <div>
-        {sectionOrder.filter(key => visibility[key] !== false).map((key, idx) => (
-          <div
-            key={key}
-            draggable
-            onDragStart={(e) => handleSectionDragStart(e, key)}
-            onDragEnter={() => handleSectionDragEnter(key)}
-            onDragOver={(e) => e.preventDefault()}
-            onDragEnd={handleSectionDragEnd}
-            className={cn(
-              "relative rounded-xl transition-all",
-              idx === 0 ? '' : (
-                key === 'hosts' && sectionOrder[idx - 1] === 'groups'
-                  ? 'mt-2'
-                  : 'mt-6'
-              ),
-              dragOverSection === key && dragSectionRef.current !== key && "ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-950",
-            )}
-          >
-            {sectionContent[key]}
-          </div>
-        ))}
-      </div>
+      {/* Arrangeable widget grid — drag the header to move, drag an edge/corner to resize */}
+      <DashboardGrid widgets={widgets} />
 
       {fullscreen && (
         <FullscreenChartModal

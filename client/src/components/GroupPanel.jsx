@@ -1,83 +1,37 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState } from 'react';
 import UnifiedChart from './UnifiedChart';
 import HostPill from './HostPill';
-import { ChevronLeft, ChevronRight, GripHorizontal } from 'lucide-react';
 
-const CHART_HEIGHT_MIN = 80;
-const CHART_HEIGHT_MAX = 600;
-const CHART_HEIGHT_DEFAULT = 150;
+const CHART_MIN = 90;
 
 /**
- * One panel per group, showing:
- *   1. Group header (name + interface alias badge + N up / M down count + chart type toggle + span controls)
- *   2. Mini UnifiedChart scoped to this group's targets (vertically resizable)
- *   3. Centered flex wrap of HostPill components
+ * One group panel, designed to fill a react-grid-layout widget:
+ *   1. Metric toggle + up/down counts (compact control row)
+ *   2. Mini UnifiedChart scoped to this group (fills available height)
+ *   3. Wrapped HostPill list
+ *
+ * Sizing is driven by the parent widget via `fillHeight` (the measured content
+ * height of the widget) — no internal resize handle or column-span buttons; the
+ * widget itself is dragged/resized by react-grid-layout.
  *
  * Props:
- *   groupName        – display name for the group
- *   targets          – array of target objects belonging to this group
- *   lastPingResults  – { [targetId]: pingResult } map from the dashboard
- *   colorMap         – { [targetId]: color } stable color map
- *   colSpan          – current column span (1–maxCols)
- *   onExpand         – callback to increase column span
- *   onCollapse       – callback to decrease column span
- *   maxCols          – maximum allowed column span
+ *   groupName        – display name (shown by the widget header, kept here for context)
+ *   targets          – target objects in this group
+ *   lastPingResults  – { [targetId]: pingResult }
+ *   colorMap         – { [targetId]: color }
+ *   fillHeight       – measured widget content height (px); chart fills what's left
+ *   showName         – render the group name inline (default false; widget header shows it)
  */
-
 export default function GroupPanel({
   groupName,
   targets = [],
   lastPingResults = {},
   colorMap = {},
-  colSpan = 1,
-  onExpand,
-  onCollapse,
-  maxCols = 4,
+  fillHeight = 220,
+  showName = false,
 }) {
-  // Local selection state — only affects this group's mini chart
   const [groupSelectedIds, setGroupSelectedIds] = useState([]);
-
-  // Active metric: 'latency' | 'jitter' | 'packet_loss'
   const [selectedMetric, setSelectedMetric] = useState('latency');
-
-  // Resizable chart height (vertical stretch)
-  const [chartHeight, setChartHeight] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('groupChartHeights') || '{}');
-      const h = saved[groupName];
-      return h ? Math.max(CHART_HEIGHT_MIN, Math.min(CHART_HEIGHT_MAX, h)) : CHART_HEIGHT_DEFAULT;
-    } catch { return CHART_HEIGHT_DEFAULT; }
-  });
-  const chartHeightRef = useRef(chartHeight);
-  const chartWrapperRef = useRef(null);
-
-  const handleChartResizeMouseDown = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startY = e.clientY;
-    const startH = chartWrapperRef.current
-      ? chartWrapperRef.current.getBoundingClientRect().height
-      : chartHeightRef.current;
-
-    const onMouseMove = (ev) => {
-      const newH = Math.max(CHART_HEIGHT_MIN, Math.min(CHART_HEIGHT_MAX, Math.round(startH + ev.clientY - startY)));
-      chartHeightRef.current = newH;
-      setChartHeight(newH);
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      try {
-        const saved = JSON.parse(localStorage.getItem('groupChartHeights') || '{}');
-        saved[groupName] = chartHeightRef.current;
-        localStorage.setItem('groupChartHeights', JSON.stringify(saved));
-      } catch {}
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [groupName]);
 
   function handlePillClick(targetId) {
     setGroupSelectedIds(prev =>
@@ -87,16 +41,13 @@ export default function GroupPanel({
     );
   }
 
-  // Filter targets for the mini chart
   const chartTargets = groupSelectedIds.length > 0
     ? targets.filter(t => groupSelectedIds.includes(t.id))
     : targets;
 
-  // Determine shared interface alias
   const aliases = [...new Set(targets.map(t => t.interface_alias).filter(Boolean))];
   const sharedAlias = aliases.length === 1 ? aliases[0] : null;
 
-  // Count up / down
   const upCount = targets.filter(t => {
     const r = lastPingResults[t.id];
     return r?.is_alive === true || r?.is_alive === 1;
@@ -107,16 +58,16 @@ export default function GroupPanel({
   }).length;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col gap-3 min-w-0 h-full">
-      {/* ── Header ── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-white truncate">{groupName}</span>
+    <div className="flex flex-col gap-2 min-w-0 h-full">
+      {/* ── Control row ── */}
+      <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+        {showName && <span className="text-sm font-semibold text-white truncate">{groupName}</span>}
         {sharedAlias && (
           <span className="text-xs bg-teal-900/50 text-teal-300 border border-teal-800 px-2 py-0.5 rounded-full flex-shrink-0">
             ↑ {sharedAlias}
           </span>
         )}
-        <span className="ml-auto text-xs flex-shrink-0 flex items-center gap-2">
+        <span className="ml-auto text-xs flex items-center gap-2">
           {upCount > 0 && (
             <span className="flex items-center gap-1 text-green-400">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
@@ -132,7 +83,6 @@ export default function GroupPanel({
           {upCount === 0 && downCount === 0 && (
             <span className="text-gray-500">{targets.length} targets</span>
           )}
-          {/* ── Metric type toggle ── */}
           <span className="flex items-center gap-0.5 ml-1 border border-gray-700 rounded-md overflow-hidden">
             {[
               { key: 'latency', label: 'Latency' },
@@ -153,61 +103,23 @@ export default function GroupPanel({
               </button>
             ))}
           </span>
-          {/* ── Horizontal span controls ── */}
-          {(onCollapse || onExpand) && (
-            <span className="flex items-center gap-0.5 border border-gray-700 rounded-md overflow-hidden">
-              <button
-                onClick={onCollapse}
-                disabled={colSpan <= 1}
-                className="p-0.5 bg-gray-800 text-gray-400 hover:text-blue-400 hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                title="Narrow panel"
-                aria-label="Narrow panel"
-              >
-                <ChevronLeft size={12} />
-              </button>
-              <button
-                onClick={onExpand}
-                disabled={colSpan >= maxCols}
-                className="p-0.5 bg-gray-800 text-gray-400 hover:text-blue-400 hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                title="Widen panel"
-                aria-label="Widen panel"
-              >
-                <ChevronRight size={12} />
-              </button>
-            </span>
-          )}
         </span>
       </div>
 
-      {/* ── Mini chart (vertically resizable) ── */}
-      <div className="min-w-0" ref={chartWrapperRef}>
+      {/* ── Mini chart (fills available height) ── */}
+      <div className="min-w-0 flex-1 min-h-0">
         <UnifiedChart
           targets={chartTargets}
           lastPingResults={lastPingResults}
           colorMap={colorMap}
-          chartHeight={chartHeight}
+          fillHeight
+          bare
           singleMetric={selectedMetric}
         />
-        {/* Vertical resize handle */}
-        <div
-          onMouseDown={handleChartResizeMouseDown}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowUp') { const v = Math.max(CHART_HEIGHT_MIN, chartHeightRef.current - 20); chartHeightRef.current = v; setChartHeight(v); try { const s = JSON.parse(localStorage.getItem('groupChartHeights') || '{}'); s[groupName] = v; localStorage.setItem('groupChartHeights', JSON.stringify(s)); } catch {} }
-            if (e.key === 'ArrowDown') { const v = Math.min(CHART_HEIGHT_MAX, chartHeightRef.current + 20); chartHeightRef.current = v; setChartHeight(v); try { const s = JSON.parse(localStorage.getItem('groupChartHeights') || '{}'); s[groupName] = v; localStorage.setItem('groupChartHeights', JSON.stringify(s)); } catch {} }
-          }}
-          tabIndex={0}
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Drag or use arrow keys to resize chart height"
-          className="w-full h-2 flex items-center justify-center cursor-row-resize group/resize mt-1 focus:outline-none"
-          title="Drag or use arrow keys to resize chart height"
-        >
-          <GripHorizontal size={12} className="text-gray-700 group-hover/resize:text-blue-500 transition-colors" />
-        </div>
       </div>
 
-      {/* ── Host pills (centered flex wrap) ── */}
-      <div className="flex flex-wrap justify-center gap-2">
+      {/* ── Host pills ── */}
+      <div className="flex flex-wrap justify-center gap-2 flex-shrink-0 max-h-24 overflow-auto">
         {targets.map(target => (
           <HostPill
             key={target.id}

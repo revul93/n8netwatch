@@ -189,7 +189,7 @@ function SharedLegend({ targets, colorMap, defaultColorMap, onColorChange }) {
 }
 
 /** One chart panel */
-function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onColorChange, chartType, chartHeight, loading, showLegend = true }) {
+function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onColorChange, chartType, chartHeight, loading, showLegend = true, bare = false }) {
   const tooltipStyle = {
     contentStyle: { background: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 },
     labelFormatter: formatTooltipLabel,
@@ -304,6 +304,17 @@ function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onC
     );
   }
 
+  // `bare` drops the card chrome (used when the panel lives inside a dashboard
+  // Widget, which already provides the framed card).
+  if (bare) {
+    return (
+      <div className="min-w-0">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{title}</h3>
+        {chartContent}
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 min-w-0">
       <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{title}</h3>
@@ -317,6 +328,7 @@ export default function UnifiedChart({
   lastPingResults = {},
   chartHeight = 220,
   fillHeight = false,
+  bare = false,
   colorMap = {},
   onColorChange,
   singleMetric,
@@ -503,6 +515,7 @@ export default function UnifiedChart({
           chartType={chartType}
           chartHeight={panelHeight}
           loading={loading}
+          bare={bare}
         />
         <div className="flex justify-end mt-2">
           <TimeRangeSelector value={range.key} onChange={setRange} />
@@ -534,6 +547,7 @@ export default function UnifiedChart({
             chartHeight={panelHeight}
             loading={loading}
             showLegend={false}
+            bare={bare}
           />
         ))}
       </div>
