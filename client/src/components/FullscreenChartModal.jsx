@@ -4,7 +4,8 @@ import { Minimize2, PanelLeftClose, PanelLeftOpen, GripVertical, LayoutGrid, Ali
 import { cn } from '../lib/utils';
 import UnifiedChart from './UnifiedChart';
 import HostCard from './HostCard';
-import GroupedView from './GroupedView';
+import GroupPanel from './GroupPanel';
+import DashboardGrid from './DashboardGrid';
 import SummaryCards from './SummaryCards';
 
 const PANEL_MIN = 180;
@@ -235,6 +236,16 @@ export default function FullscreenChartModal({ targets = [], lastPingResults = {
     };
   }, []);
 
+  // The widget grid (react-grid-layout WidthProvider) measures its container width
+  // on mount; the modal opens and enters fullscreen a beat later, so nudge it to
+  // re-measure once the layout settles — otherwise widgets can start at 0 width.
+  useEffect(() => {
+    const timers = [80, 250, 700].map((ms) =>
+      setTimeout(() => window.dispatchEvent(new Event('resize')), ms),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
   // Exit browser fullscreen when the modal closes
   const handleClose = useCallback(() => {
     const exitFs =
@@ -313,6 +324,57 @@ export default function FullscreenChartModal({ targets = [], lastPingResults = {
   const filteredTargets = selectedIds.length > 0
     ? panelTargets.filter(t => selectedIds.includes(t.id))
     : panelTargets;
+
+  // ── Arrangeable widget grid (same drag/resize system as the dashboard) ──────
+  const fsGroupEntries = (() => {
+    const map = new Map();
+    targets.forEach((t) => {
+      const key = t.group || 'Ungrouped';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(t);
+    });
+    const named = [];
+    let ung = null;
+    for (const [name, gts] of map) {
+      if (name === 'Ungrouped') ung = [name, gts];
+      else named.push([name, gts]);
+    }
+    if (ung) named.push(ung);
+    return named;
+  })();
+
+  const fsWidgets = [
+    {
+      id: 'summary', title: 'Summary', w: 12, h: 4, minW: 4, minH: 3,
+      render: () => <SummaryCards targets={targets} lastPingResults={lastPingResults} />,
+    },
+    {
+      id: 'chart', title: 'Overview Chart', w: 12, h: 16, minW: 4, minH: 8,
+      render: () => (
+        <div className="h-full min-h-0">
+          <UnifiedChart
+            targets={filteredTargets}
+            lastPingResults={lastPingResults}
+            colorMap={colorMap}
+            onColorChange={onColorChange}
+            fillHeight
+            bare
+          />
+        </div>
+      ),
+    },
+    ...fsGroupEntries.map(([name, gts]) => ({
+      id: `group:${name}`, title: name, w: 3, h: 17, minW: 2, minH: 6,
+      render: () => (
+        <GroupPanel
+          groupName={name}
+          targets={gts}
+          lastPingResults={lastPingResults}
+          colorMap={colorMap}
+        />
+      ),
+    })),
+  ];
 
   const content = (
     <div
@@ -438,74 +500,9 @@ export default function FullscreenChartModal({ targets = [], lastPingResults = {
           </>
         )}
 
-        {/* Main content area — dashboard-like layout without host cards */}
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-y-auto">
-          <div className="flex flex-col p-3 gap-4">
-            {/* Summary cards */}
-            <SummaryCards targets={targets} lastPingResults={lastPingResults} />
-
-            {/* Chart section */}
-            <div
-              ref={fsChartSectionRef}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-4 min-w-0 relative"
-              style={fsChartWidthPct < 100 ? { width: `${fsChartWidthPct}%` } : undefined}
-            >
-              {/* Right-side horizontal resize handle */}
-              <div
-                className="absolute inset-y-2 right-0 w-2 cursor-col-resize group/colresize flex items-center justify-center z-10"
-                onMouseDown={handleFsChartWidthResizeMouseDown}
-                onKeyDown={handleFsChartWidthKeyDown}
-                tabIndex={0}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Drag or use arrow keys to resize chart width"
-                title="Drag or use arrow keys to resize chart width"
-              >
-                <div className="h-8 w-1 rounded-full bg-gray-800 group-hover/colresize:bg-blue-600 transition-colors" />
-              </div>
-
-              <UnifiedChart
-                targets={filteredTargets}
-                lastPingResults={lastPingResults}
-                colorMap={colorMap}
-                onColorChange={onColorChange}
-                chartHeight={fsChartHeight}
-              />
-              {/* Vertical resize handle */}
-              <div
-                className="w-full h-2 flex items-center justify-center cursor-row-resize group mt-1"
-                onMouseDown={handleFsChartResizeMouseDown}
-                onKeyDown={handleFsChartHeightKeyDown}
-                tabIndex={0}
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Drag or use arrow keys to resize chart height"
-                title="Drag or use arrow keys to resize chart"
-              >
-                <div className="h-1 w-16 rounded-full bg-gray-800 group-hover:bg-blue-600 transition-colors" />
-              </div>
-            </div>
-
-            {/* Groups section */}
-            {targets.length > 0 && (
-              <div>
-                <button
-                  onClick={toggleFsGroupsPanel}
-                  className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-400 uppercase tracking-wider hover:text-white transition-colors"
-                >
-                  {fsGroupsPanelOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  Groups
-                </button>
-                {fsGroupsPanelOpen && (
-                  <GroupedView
-                    targets={targets}
-                    lastPingResults={lastPingResults}
-                    colorMap={colorMap}
-                  />
-                )}
-              </div>
-            )}
-          </div>
+        {/* Main content area — arrangeable widget grid (drag header to move, edge/corner to resize) */}
+        <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-3">
+          <DashboardGrid storageKey="fsDashLayout" widgets={fsWidgets} />
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ const RGL = WidthProvider(GridLayout);
 const COLS = 12;
 const ROW_HEIGHT = 30;
 const MARGIN = [12, 12];
-const STORAGE_KEY = 'dashLayoutV3';
+const DEFAULT_STORAGE_KEY = 'dashLayoutV3';
 
 /**
  * Flow widgets left-to-right, wrapping at COLS, to produce a default layout for
@@ -26,9 +26,9 @@ function flowLayout(widgets) {
   return items;
 }
 
-function loadSaved() {
+function loadSaved(storageKey) {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const raw = JSON.parse(localStorage.getItem(storageKey));
     return Array.isArray(raw) ? raw : null;
   } catch { return null; }
 }
@@ -45,8 +45,8 @@ function loadSaved() {
  * their saved geometry, brand-new widgets are flowed in with their defaults,
  * and vanished widgets are dropped.
  */
-export default function DashboardGrid({ widgets }) {
-  const savedRef = useRef(loadSaved());
+export default function DashboardGrid({ widgets, storageKey = DEFAULT_STORAGE_KEY }) {
+  const savedRef = useRef(loadSaved(storageKey));
 
   // Merge saved geometry with defaults for the current widget set.
   const layout = useMemo(() => {
@@ -64,9 +64,9 @@ export default function DashboardGrid({ widgets }) {
 
   const handleLayoutChange = useCallback((next) => {
     savedRef.current = next.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedRef.current));
+    localStorage.setItem(storageKey, JSON.stringify(savedRef.current));
     force((n) => n + 1);
-  }, []);
+  }, [storageKey]);
 
   return (
     <RGL
