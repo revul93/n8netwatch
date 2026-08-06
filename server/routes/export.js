@@ -3,8 +3,37 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../database');
+const { getConfig } = require('../config');
 
-// GET /api/targets/:id/export  (CSV download)
+// Format an epoch-ms timestamp as local "YYYY-MM-DD HH:MM:SS".
+function formatTimestamp(ms) {
+  const d = new Date(Number(ms));
+  if (isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// Resolve a target's `interface` (an IPv4 or an interface name) to its source IP.
+function resolveSourceIp(iface) {
+  if (!iface) return '';
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(iface)) return iface; // already an IP
+  try {
+    const cfg = getConfig();
+    const match = (cfg.interfaces || []).find((i) => i.name === iface);
+    return (match && match.ipv4) || '';
+  } catch {
+    return '';
+  }
+}
+
+function csvCell(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+// GET /api/targets/:id/export  (CSV download — one row per ping cycle)
 router.get('/:id/export', (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -17,22 +46,32 @@ router.get('/:id/export', (req, res) => {
     // Fetch up to 100,000 rows for export
     const { rows } = db.getPingResults(id, from, to, 100000, 0);
 
+    const targetIp = target.ip || '';
+    const sourceIp = resolveSourceIp(target.interface);
+
     const headers = [
-      'id', 'target_id', 'is_alive', 'min_latency', 'avg_latency',
-      'max_latency', 'jitter', 'packet_loss', 'packets_sent', 'packets_received', 'created_at',
+      'id', 'timestamp', 'target_id', 'target_ip', 'source_ip', 'is_alive',
+      'min_latency', 'avg_latency', 'max_latency', 'jitter', 'packet_loss_prct',
+      'packets_sent', 'packets_received',
     ];
 
     const csvLines = [
       headers.join(','),
-      ...rows.map((row) =>
-        headers.map((h) => {
-          const val = row[h];
-          if (val === null || val === undefined) return '';
-          // Quote strings that may contain commas
-          const str = String(val);
-          return str.includes(',') ? `"${str.replace(/"/g, '""')}"` : str;
-        }).join(',')
-      ),
+      ...rows.map((row) => [
+        row.id,
+        formatTimestamp(row.created_at),
+        row.target_id,
+        targetIp,
+        sourceIp,
+        row.is_alive,
+        row.min_latency,
+        row.avg_latency,
+        row.max_latency,
+        row.jitter,
+        row.packet_loss,
+        row.packets_sent,
+        row.packets_received,
+      ].map(csvCell).join(',')),
     ];
 
     const filename = `${target.name.replace(/\s+/g, '_')}_${id}_export.csv`;
