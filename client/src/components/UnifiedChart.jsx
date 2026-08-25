@@ -189,7 +189,10 @@ function SharedLegend({ targets, colorMap, defaultColorMap, onColorChange }) {
 }
 
 /** One chart panel */
-function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onColorChange, chartType, chartHeight, loading, showLegend = true, bare = false }) {
+function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onColorChange, chartType, chartHeight, loading, showLegend = true, bare = false, fill = false }) {
+  // In `fill` mode the plot stretches to whatever height its flex parent gives
+  // it (used inside a widget so the legend/controls stay visible without scroll).
+  const plotHeight = fill ? '100%' : chartHeight;
   const tooltipStyle = {
     contentStyle: { background: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 },
     labelFormatter: formatTooltipLabel,
@@ -241,19 +244,19 @@ function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onC
   let chartContent;
   if (loading) {
     chartContent = (
-      <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: chartHeight }}>
+      <div className="flex items-center justify-center text-gray-500 text-sm h-full" style={fill ? undefined : { height: chartHeight }}>
         Loading…
       </div>
     );
   } else if (!data.length) {
     chartContent = (
-      <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: chartHeight }}>
+      <div className="flex items-center justify-center text-gray-500 text-sm h-full" style={fill ? undefined : { height: chartHeight }}>
         No data
       </div>
     );
   } else if (chartType === 'area') {
     chartContent = (
-      <ResponsiveContainer width="100%" height={chartHeight}>
+      <ResponsiveContainer width="100%" height={plotHeight}>
         <AreaChart {...commonProps}>
           {grid}{xAxis}{yAxis}
           <Tooltip {...tooltipStyle} />
@@ -279,7 +282,7 @@ function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onC
     );
   } else {
     chartContent = (
-      <ResponsiveContainer width="100%" height={chartHeight}>
+      <ResponsiveContainer width="100%" height={plotHeight}>
         <LineChart {...commonProps}>
           {grid}{xAxis}{yAxis}
           <Tooltip {...tooltipStyle} />
@@ -308,9 +311,9 @@ function ChartPanel({ title, unit, data, targets, colorMap, defaultColorMap, onC
   // Widget, which already provides the framed card).
   if (bare) {
     return (
-      <div className="min-w-0">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{title}</h3>
-        {chartContent}
+      <div className={cn('min-w-0', fill && 'h-full flex flex-col min-h-0')}>
+        <h3 className={cn('text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2', fill && 'flex-shrink-0')}>{title}</h3>
+        {fill ? <div className="flex-1 min-h-0">{chartContent}</div> : chartContent}
       </div>
     );
   }
@@ -527,10 +530,10 @@ export default function UnifiedChart({
   const activeTabs = METRIC_TABS.filter(t => activeMetrics.includes(t.key));
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className={cn(fillHeight && 'flex flex-col h-full min-h-0')}>
       {/* Horizontally stacked charts for all active metrics */}
       <div
-        className="grid gap-3"
+        className={cn('grid gap-3', fillHeight && 'flex-1 min-h-0')}
         style={{ gridTemplateColumns: `repeat(${activeTabs.length}, minmax(0, 1fr))` }}
       >
         {activeTabs.map(tab => (
@@ -548,13 +551,14 @@ export default function UnifiedChart({
             loading={loading}
             showLegend={false}
             bare={bare}
+            fill={fillHeight}
           />
         ))}
       </div>
 
       {/* Shared legend immediately below charts */}
       {targets.length > 0 && (
-        <div className="mt-3">
+        <div className={cn('mt-3', fillHeight && 'flex-shrink-0')}>
           <SharedLegend
             targets={targets}
             colorMap={colorMap}
@@ -565,7 +569,7 @@ export default function UnifiedChart({
       )}
 
       {/* Bottom bar: metric toggles + time range selector (right-aligned) */}
-      <div className="flex items-center justify-end gap-3 mt-3 flex-wrap">
+      <div className={cn('flex items-center justify-end gap-3 mt-3 flex-wrap', fillHeight && 'flex-shrink-0')}>
         <div className="flex gap-1 bg-gray-800 border border-gray-700 rounded-lg p-1">
           {METRIC_TABS.map(tab => {
             const isActive = activeMetrics.includes(tab.key);
