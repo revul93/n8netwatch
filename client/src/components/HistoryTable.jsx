@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { ArrowUpDown, Download } from 'lucide-react';
+import { ArrowUpDown, Download, FileText } from 'lucide-react';
 import { cn, formatMs, formatPercent } from '../lib/utils';
-import { getExportUrl } from '../lib/api';
+import { getExportUrl, getLogReportData, getBrandingLogo, getReportConfig } from '../lib/api';
+import { generateISPReport } from '../lib/reportGenerator';
 
 const PAGE_SIZE = 50;
 
@@ -74,21 +75,67 @@ export default function HistoryTable({ rows = [], targets = [], filters = {} }) 
     ? getExportUrl(filters.targetId, filters.from || undefined, filters.to || undefined)
     : null;
 
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+
+  async function handleExportPdf() {
+    if (!filters.targetId) return;
+    setPdfLoading(true);
+    setPdfError('');
+    try {
+      const [cfg, logoDataUrl] = await Promise.all([
+        getReportConfig().catch(() => null),
+        getBrandingLogo().catch(() => null),
+      ]);
+      const rc = cfg || {};
+      const data = await getLogReportData(
+        filters.targetId,
+        filters.from || undefined,
+        filters.to || undefined,
+        {
+          latencyThreshold: rc.latency_threshold,
+          jitterThreshold: rc.jitter_threshold,
+          outagesOnly: rc.outages_only,
+          includeLog: rc.detailed_log !== false,
+        },
+      );
+      generateISPReport(data, { logoDataUrl });
+    } catch (e) {
+      setPdfError(e.message || 'Failed to generate report');
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
         <h3 className="text-sm font-semibold text-gray-200">
           Results <span className="text-gray-500 font-normal">({filtered.length})</span>
         </h3>
-        {exportUrl && (
-          <a
-            href={exportUrl}
-            download
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-400 hover:text-white transition-colors"
-          >
-            <Download size={13} />
-            Export CSV
-          </a>
+        {filters.targetId && (
+          <div className="flex items-center gap-2">
+            {pdfError && <span className="text-xs text-red-400">{pdfError}</span>}
+            <button
+              onClick={handleExportPdf}
+              disabled={pdfLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-60 rounded-lg text-xs text-white transition-colors"
+              title="Download a branded PDF availability report for this target and time range"
+            >
+              <FileText size={13} />
+              {pdfLoading ? 'Generating…' : 'Export PDF'}
+            </button>
+            {exportUrl && (
+              <a
+                href={exportUrl}
+                download
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                <Download size={13} />
+                Export CSV
+              </a>
+            )}
+          </div>
         )}
       </div>
 

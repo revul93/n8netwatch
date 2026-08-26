@@ -27,6 +27,7 @@ const interfacesRouter = require("./routes/interfaces");
 const speedtestRouter = require("./routes/speedtest");
 const versionRouter = require("./routes/version");
 const adminRouter   = require("./routes/admin");
+const brandingRouter = require("./routes/branding");
 
 // Maximum time (ms) to wait for in-flight requests during graceful shutdown
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -89,7 +90,8 @@ async function main() {
   // Compress all responses (gzip/deflate)
   app.use(compression());
 
-  app.use(express.json());
+  // Raised limit so a base64 company-logo upload fits (used by branding endpoint).
+  app.use(express.json({ limit: "5mb" }));
 
   // IP allowlist filters — read live from config so hot-reloads take effect
   app.use("/api", apiFilter);
@@ -116,6 +118,7 @@ async function main() {
   app.use("/api/interfaces", interfacesRouter);
   app.use("/api/speedtest", speedtestRouter);
   app.use("/api/version", versionRouter);
+  app.use("/api/branding", brandingRouter);
   app.use("/api/admin", adminRouter);
 
   // 7. Create HTTP/HTTPS server and init WebSocket

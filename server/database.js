@@ -375,7 +375,9 @@ function getPingResults(targetId, from, to, limit = 100, offset = 0) {
   const db = getDb();
   const fromMs = parseMs(from, 0);
   const toMs = parseMs(to, Date.now());
-  const lim = Math.min(Number(limit) || 100, 1000);
+  // Ceiling is generous so full-range exports/reports (which pass a large limit)
+  // are honored; ordinary paginated callers still pass small limits.
+  const lim = Math.min(Number(limit) || 100, 500000);
   const off = Number(offset) || 0;
 
   const rows = db

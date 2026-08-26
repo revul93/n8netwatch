@@ -80,6 +80,34 @@ export function getReportData(targetId) {
   return request(`/targets/${targetId}/report`);
 }
 
+// Availability-report data (summary + latency series + problem events) for the PDF.
+// opts: { latencyThreshold, jitterThreshold, outagesOnly, includeLog }
+export function getLogReportData(targetId, from, to, opts = {}) {
+  const { latencyThreshold, jitterThreshold, outagesOnly, includeLog } = opts;
+  return request(`/targets/${targetId}/log-report`, {
+    from,
+    to,
+    latencyThreshold,
+    jitterThreshold,
+    outagesOnly: outagesOnly ? 1 : undefined,
+    includeLog: includeLog === false ? 0 : undefined,
+  });
+}
+
+// Company logo (data URL) for report branding; null if none uploaded.
+export function getBrandingLogo() {
+  return request('/branding/logo').then(res => res.dataUrl || null);
+}
+
+// PDF report settings (thresholds/toggles) configured by the admin. Public read.
+export function getReportConfig() {
+  return request('/branding/report-config');
+}
+
+export function adminSaveReportConfig(token, data) {
+  return adminRequest('/config/report', 'PUT', data, token);
+}
+
 export function getInterfaces() {
   return request('/interfaces').then(res => res.interfaces || []);
 }
@@ -202,6 +230,14 @@ export function adminSaveSpeedtest(token, data) {
 
 export function adminRunSpeedtest(token) {
   return adminRequest('/speedtest/run', 'POST', undefined, token);
+}
+
+export function adminUploadLogo(token, dataUrl) {
+  return adminRequest('/config/branding/logo', 'POST', { dataUrl }, token);
+}
+
+export function adminDeleteLogo(token) {
+  return adminRequest('/config/branding/logo', 'DELETE', undefined, token);
 }
 
 // ── Speedtest API ─────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Lock, LogOut, Plus, Trash2, Save, RefreshCw, ChevronDown, ChevronUp,
-  Server, Wifi, Bell, Mail, Settings2, Target, Shield, Eye, Gauge, Play
+  Server, Wifi, Bell, Mail, Settings2, Target, Shield, Eye, Gauge, Play, Image, FileText
 } from 'lucide-react';
 import {
   adminHasPassword, adminLogin, adminLogout, adminVerify, adminGetConfig,
@@ -9,6 +9,8 @@ import {
   adminSaveInterfaces, adminSaveAlertRules, adminSaveSmtp,
   adminSaveServer, adminSaveGeneral, adminSaveSecurity, adminSaveDashboard,
   adminSaveSpeedtest, adminRunSpeedtest, getSpeedtestTools, getInterfaces,
+  adminUploadLogo, adminDeleteLogo, getBrandingLogo,
+  getReportConfig, adminSaveReportConfig,
 } from '../lib/api';
 import { cn } from '../lib/utils';
 
@@ -1109,7 +1111,171 @@ function SpeedtestSection({ config, token, onConfigRefresh }) {
   );
 }
 
-// ── Tab bar ───────────────────────────────────────────────────────────────────
+// ── PDF Export report section ───────────────────────────────────────────────────
+function ReportSection({ config, token, onConfigRefresh }) {
+  const rc = config?.report || {};
+
+  const [detailedLog, setDetailedLog] = useState(rc.detailed_log !== false);
+  const [outagesOnly, setOutagesOnly] = useState(!!rc.outages_only);
+  const [latency, setLatency] = useState(rc.latency_threshold ?? 100);
+  const [jitter, setJitter]   = useState(rc.jitter_threshold ?? 0);
+  const [saving, setSaving]   = useState(false);
+  const [saved, setSaved]     = useState(false);
+  const [error, setError]     = useState('');
+
+  // Logo state
+  const [logo, setLogo]           = useState(null);
+  const [logoLoading, setLogoLoading] = useState(true);
+  const [logoBusy, setLogoBusy]   = useState(false);
+  const [logoErr, setLogoErr]     = useState('');
+  const [logoSaved, setLogoSaved] = useState(false);
+
+  useEffect(() => {
+    if (!config) return;
+    const r = config.report || {};
+    setDetailedLog(r.detailed_log !== false);
+    setOutagesOnly(!!r.outages_only);
+    setLatency(r.latency_threshold ?? 100);
+    setJitter(r.jitter_threshold ?? 0);
+  }, [config]);
+
+  useEffect(() => {
+    getBrandingLogo().then(setLogo).catch(() => {}).finally(() => setLogoLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      await adminSaveReportConfig(token, {
+        detailed_log: detailedLog,
+        outages_only: outagesOnly,
+        latency_threshold: parseInt(latency, 10) || 100,
+        jitter_threshold: parseInt(jitter, 10) || 0,
+      });
+      setSaved(true);
+      onConfigRefresh();
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const onFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/image\/(png|jpe?g)/.test(file.type)) { setLogoErr('Please choose a PNG or JPEG image.'); return; }
+    if (file.size > 3 * 1024 * 1024) { setLogoErr('Image too large (max 3 MB).'); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      setLogoBusy(true); setLogoErr(''); setLogoSaved(false);
+      try {
+        await adminUploadLogo(token, reader.result);
+        setLogo(reader.result);
+        setLogoSaved(true);
+        setTimeout(() => setLogoSaved(false), 3000);
+      } catch (err) { setLogoErr(err.message); }
+      finally { setLogoBusy(false); }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeLogo = async () => {
+    setLogoBusy(true); setLogoErr('');
+    try { await adminDeleteLogo(token); setLogo(null); }
+    catch (err) { setLogoErr(err.message); }
+    finally { setLogoBusy(false); }
+  };
+
+  return (
+    <SectionCard icon={FileText} title="PDF Export Report">
+      <div className="flex flex-col gap-5">
+        <p className="text-xs text-gray-500">
+          Defaults for the branded PDF availability report exported from the History page.
+        </p>
+
+        {/* Report options */}
+        <div className="flex flex-col gap-3">
+          <Toggle
+            label="Include detailed per-sample log (appended after the events table)"
+            checked={detailedLog}
+            onChange={setDetailedLog}
+          />
+          <Toggle
+            label="Outages only — ignore latency / jitter / packet-loss degradation, count outages only"
+            checked={outagesOnly}
+            onChange={setOutagesOnly}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <Field
+              label="Latency threshold (ms)"
+              type="number"
+              value={latency}
+              onChange={setLatency}
+              placeholder="100"
+              className={outagesOnly ? 'opacity-50 pointer-events-none' : ''}
+            />
+            <span className="text-xs text-gray-500">Samples above this are flagged degraded &amp; highlighted.</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Field
+              label="Jitter threshold (ms, 0 = off)"
+              type="number"
+              value={jitter}
+              onChange={setJitter}
+              placeholder="0"
+              className={outagesOnly ? 'opacity-50 pointer-events-none' : ''}
+            />
+            <span className="text-xs text-gray-500">When &gt; 0, samples above this are flagged degraded too.</span>
+          </div>
+        </div>
+
+        <SaveBar saving={saving} saved={saved} error={error} onSave={handleSave} />
+
+        <hr className="border-gray-800" />
+
+        {/* Company logo */}
+        <div className="flex flex-col gap-3">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Company Logo</p>
+          <p className="text-xs text-gray-500">
+            Optional PNG or JPEG shown at the top of the report. If none is set, the report omits it.
+          </p>
+          {logoLoading ? (
+            <span className="text-sm text-gray-500">Loading…</span>
+          ) : (
+            <div className="flex items-center gap-4">
+              <div className="w-44 h-20 flex items-center justify-center bg-gray-800 border border-gray-700 rounded-lg overflow-hidden p-2">
+                {logo
+                  ? <img src={logo} alt="Company logo" className="max-w-full max-h-full object-contain" />
+                  : <span className="text-xs text-gray-600">No logo</span>}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-60 rounded-lg text-sm text-white cursor-pointer w-fit">
+                  <Image size={14} /> {logo ? 'Replace logo' : 'Upload logo'}
+                  <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={onFile} disabled={logoBusy} />
+                </label>
+                {logo && (
+                  <button
+                    onClick={removeLogo}
+                    disabled={logoBusy}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-400 hover:text-white disabled:opacity-60 w-fit"
+                  >
+                    <Trash2 size={13} /> Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {logoErr && <span className="text-xs text-red-400">{logoErr}</span>}
+          {logoSaved && <span className="text-xs text-green-400">Logo saved.</span>}
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 const TABS = [
   { id: 'targets',    label: 'Targets',    icon: Target  },
   { id: 'interfaces', label: 'Interfaces', icon: Wifi    },
@@ -1118,6 +1284,7 @@ const TABS = [
   { id: 'server',     label: 'Server',     icon: Server  },
   { id: 'security',   label: 'Security',   icon: Shield  },
   { id: 'speedtest',  label: 'Speedtest',  icon: Gauge   },
+  { id: 'report',     label: 'PDF Export', icon: FileText },
   { id: 'view',       label: 'View',       icon: Eye     },
 ];
 
@@ -1212,6 +1379,7 @@ export default function Settings() {
           {activeTab === 'server'     && <ServerSection     config={config} token={token} onConfigRefresh={() => fetchConfig(token)} />}
           {activeTab === 'security'   && <SecuritySection   config={config} token={token} onConfigRefresh={() => fetchConfig(token)} />}
           {activeTab === 'speedtest'  && <SpeedtestSection  config={config} token={token} onConfigRefresh={() => fetchConfig(token)} />}
+          {activeTab === 'report'     && <ReportSection     config={config} token={token} onConfigRefresh={() => fetchConfig(token)} />}
           {activeTab === 'view'       && <ViewSection       config={config} token={token} onConfigRefresh={() => fetchConfig(token)} />}
         </>
       )}

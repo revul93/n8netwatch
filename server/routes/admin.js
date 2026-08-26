@@ -6,6 +6,8 @@ const auth    = require('../auth');
 const { getConfig, saveConfig } = require('../config');
 const db = require('../database');
 const { broadcast } = require('../websocket');
+const branding = require('../branding-store');
+const { normalizeReportConfig } = require('../report-config');
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
 
@@ -405,6 +407,50 @@ router.post('/speedtest/run', requireAuth, async (req, res) => {
       insertSpeedtestResult({ error: err.message, created_at: Date.now() });
     } catch (_) {}
     res.status(500).json({ error: err.message || 'Speed test failed' });
+  }
+});
+
+// ── Branding: company logo for reports ─────────────────────────────────────────
+
+// POST /api/admin/config/branding/logo  — upload/replace the logo (PNG or JPEG data URL)
+router.post('/config/branding/logo', requireAuth, (req, res) => {
+  try {
+    const { dataUrl } = req.body || {};
+    if (typeof dataUrl !== 'string' || !/^data:image\/(png|jpe?g);base64,/i.test(dataUrl)) {
+      return res.status(400).json({ error: 'Provide a PNG or JPEG image (data URL).' });
+    }
+    if (dataUrl.length > 4_500_000) {
+      return res.status(413).json({ error: 'Logo too large — please use an image under ~3 MB.' });
+    }
+    branding.setLogo(dataUrl);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] POST /config/branding/logo:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/admin/config/branding/logo  — remove the logo
+router.delete('/config/branding/logo', requireAuth, (req, res) => {
+  try {
+    branding.clearLogo();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] DELETE /config/branding/logo:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/config/report  — PDF export report settings
+router.put('/config/report', requireAuth, (req, res) => {
+  try {
+    const config = getConfig();
+    config.report = normalizeReportConfig({ ...(config.report || {}), ...(req.body || {}) });
+    saveConfig(config);
+    res.json({ success: true, report: config.report });
+  } catch (err) {
+    console.error('[Admin] PUT /config/report:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
